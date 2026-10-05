@@ -1,7 +1,11 @@
 import type { FC } from 'react';
-import { MapPin, ChevronDown, Search, LayoutGrid, Bell, Ticket, Home } from 'lucide-react';
+import { MapPin, ChevronDown, Search, LayoutGrid, Bell, Ticket, Home, Server } from 'lucide-react';
 
-export const Navbar: FC = () => {
+interface NavbarProps {
+  backendOnline?: boolean;
+}
+
+export const Navbar: FC<NavbarProps> = ({ backendOnline = false }) => {
   return (
     <header className="tickid-navbar">
       <div className="navbar-left">
@@ -24,6 +28,20 @@ export const Navbar: FC = () => {
         <button className="home-circle-btn" title="Beranda">
           <Home size={18} className="home-icon" />
         </button>
+
+        {/* Backend Status Pill */}
+        <div
+          className={`backend-pill ${backendOnline ? 'online' : 'offline'}`}
+          title={
+            backendOnline
+              ? 'Terhubung langsung ke Go Microservice (Port 8083: Booking / 8084: Payment)'
+              : 'Backend Go offline (otomatis menggunakan mode simulasi lokal)'
+          }
+        >
+          <Server size={13} />
+          <span className="backend-status-dot" />
+          <span className="backend-text">{backendOnline ? 'API Connected' : 'Demo API'}</span>
+        </div>
       </div>
 
       {/* Center Search Bar */}

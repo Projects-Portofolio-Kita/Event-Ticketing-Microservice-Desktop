@@ -1,5 +1,5 @@
 import type { FC } from 'react';
-import { ArrowRight, Trash2 } from 'lucide-react';
+import { ArrowRight, Trash2, Loader2 } from 'lucide-react';
 import { SelectedSeat } from '../types/booking';
 
 interface OrderSummaryProps {
@@ -7,6 +7,7 @@ interface OrderSummaryProps {
   onRemoveSeat: (seatId: string) => void;
   onProceedToPayment: () => void;
   lockTimerSeconds: number;
+  isLoading?: boolean;
 }
 
 export const OrderSummary: FC<OrderSummaryProps> = ({
@@ -14,6 +15,7 @@ export const OrderSummary: FC<OrderSummaryProps> = ({
   onRemoveSeat,
   onProceedToPayment,
   lockTimerSeconds,
+  isLoading = false,
 }) => {
   // Format MM:SS for countdown timer
   const formatTimer = (seconds: number) => {
@@ -114,12 +116,21 @@ export const OrderSummary: FC<OrderSummaryProps> = ({
         </div>
 
         <button
-          className={`checkout-btn ${selectedSeats.length === 0 ? 'disabled' : 'active'}`}
-          disabled={selectedSeats.length === 0}
+          className={`checkout-btn ${selectedSeats.length === 0 || isLoading ? 'disabled' : 'active'}`}
+          disabled={selectedSeats.length === 0 || isLoading}
           onClick={onProceedToPayment}
         >
-          <span>Lanjut ke Pembayaran QRIS</span>
-          <ArrowRight size={18} className="checkout-arrow" />
+          {isLoading ? (
+            <>
+              <Loader2 size={18} className="animate-spin" />
+              <span>Menghubungi Backend...</span>
+            </>
+          ) : (
+            <>
+              <span>Lanjut ke Pembayaran QRIS</span>
+              <ArrowRight size={18} className="checkout-arrow" />
+            </>
+          )}
         </button>
       </div>
     </aside>

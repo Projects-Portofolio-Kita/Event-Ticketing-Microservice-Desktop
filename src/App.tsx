@@ -5,6 +5,7 @@ import { OrderSummary } from './components/OrderSummary';
 import { PaymentModal } from './components/PaymentModal';
 import { initialCategories } from './data/mockSeats';
 import { SeatCategory, Seat, SelectedSeat } from './types/booking';
+import { checkBackendHealth, createReservation, cancelReservation } from './services/api';
 import './App.css';
 
 export function App() {
@@ -14,6 +15,24 @@ export function App() {
   const [lockTimerSeconds, setLockTimerSeconds] = useState<number>(243);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isPaymentOpen, setIsPaymentOpen] = useState<boolean>(false);
+  const [backendOnline, setBackendOnline] = useState<boolean>(false);
+  const [isBookingLoading, setIsBookingLoading] = useState<boolean>(false);
+
+  // Active reservation session state
+  const [currentReservationId, setCurrentReservationId] = useState<string | null>(null);
+  const [currentBookingRef, setCurrentBookingRef] = useState<string | null>(null);
+
+  // Check backend microservices health on mount and periodically
+  useEffect(() => {
+    const checkHealth = async () => {
+      const status = await checkBackendHealth();
+      setBackendOnline(status.bookingService);
+    };
+
+    checkHealth();
+    const interval = setInterval(checkHealth, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Countdown timer logic
   useEffect(() => {
@@ -34,7 +53,7 @@ export function App() {
     setToastMessage(message);
     setTimeout(() => {
       setToastMessage(null);
-    }, 3000);
+    }, 3500);
   };
 
   // Toggle seat selection
@@ -89,8 +108,41 @@ export function App() {
     setSelectedSeats((prev) => prev.filter((s) => s.id !== seatId));
   };
 
+  // Handle proceed to QRIS payment (triggers backend reservation lock)
+  const handleProceedToPayment = async () => {
+    if (selectedSeats.length === 0) return;
+
+    setIsBookingLoading(true);
+    try {
+      const res = await createReservation(selectedSeats);
+      setCurrentReservationId(res.reservationId);
+      setCurrentBookingRef(res.bookingRef);
+
+      // Sync remaining seconds if expiresAt is provided
+      if (res.expiresAt) {
+        const remainingSecs = Math.max(0, Math.floor((new Date(res.expiresAt).getTime() - Date.now()) / 1000));
+        if (remainingSecs > 0) {
+          setLockTimerSeconds(remainingSecs);
+        }
+      }
+
+      if (res.isMock) {
+        showToast('Reservasi siap! (Mode demonstrasi aktif)');
+      } else {
+        showToast(`Kursi berhasil di-lock di database! Ref: ${res.bookingRef}`);
+      }
+
+      setIsPaymentOpen(true);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Gagal membuat reservasi di server.';
+      showToast(message);
+    } finally {
+      setIsBookingLoading(false);
+    }
+  };
+
   const handlePaymentSuccess = () => {
-    // Mark booked seats as sold
+    // Mark booked seats as sold in local view
     setCategories((prevCategories) =>
       prevCategories.map((cat) => ({
         ...cat,
@@ -106,13 +158,22 @@ export function App() {
       }))
     );
     setSelectedSeats([]);
-    showToast('Pembayaran berhasil! Tiket Anda telah diterbitkan.');
+    setCurrentReservationId(null);
+    setCurrentBookingRef(null);
+    showToast('Pembayaran berhasil! Tiket Anda telah tersimpan dan terbit.');
+  };
+
+  const handleClosePaymentModal = () => {
+    setIsPaymentOpen(false);
+    if (currentReservationId && backendOnline) {
+      cancelReservation(currentReservationId);
+    }
   };
 
   return (
     <>
-      {/* Top Navbar */}
-      <Navbar />
+      {/* Top Navbar with backend health status */}
+      <Navbar backendOnline={backendOnline} />
 
       {/* Main Booking Area */}
       <main className="booking-main-container">
@@ -127,8 +188,9 @@ export function App() {
         <OrderSummary
           selectedSeats={selectedSeats}
           onRemoveSeat={handleRemoveSeat}
-          onProceedToPayment={() => setIsPaymentOpen(true)}
+          onProceedToPayment={handleProceedToPayment}
           lockTimerSeconds={lockTimerSeconds}
+          isLoading={isBookingLoading}
         />
       </main>
 
@@ -138,8 +200,10 @@ export function App() {
       {/* QRIS Payment Modal */}
       <PaymentModal
         isOpen={isPaymentOpen}
-        onClose={() => setIsPaymentOpen(false)}
+        onClose={handleClosePaymentModal}
         selectedSeats={selectedSeats}
+        reservationId={currentReservationId}
+        bookingRef={currentBookingRef}
         onPaymentSuccess={handlePaymentSuccess}
       />
     </>
