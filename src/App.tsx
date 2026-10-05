@@ -1,54 +1,212 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { useState, useEffect } from 'react';
+import { Navbar } from './components/Navbar';
+import { SeatMap } from './components/SeatMap';
+import { OrderSummary } from './components/OrderSummary';
+import { PaymentModal } from './components/PaymentModal';
+import { initialCategories } from './data/mockSeats';
+import { SeatCategory, Seat, SelectedSeat } from './types/booking';
+import { checkBackendHealth, createReservation, cancelReservation } from './services/api';
+import './App.css';
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+export function App() {
+  const [categories, setCategories] = useState<SeatCategory[]>(initialCategories);
+  const [selectedSeats, setSelectedSeats] = useState<SelectedSeat[]>([]);
+  // Initial 243 seconds = 04:03 matching reference image
+  const [lockTimerSeconds, setLockTimerSeconds] = useState<number>(243);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isPaymentOpen, setIsPaymentOpen] = useState<boolean>(false);
+  const [backendOnline, setBackendOnline] = useState<boolean>(false);
+  const [isBookingLoading, setIsBookingLoading] = useState<boolean>(false);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    try {
-      setGreetMsg(await invoke("greet", { name }));
-    } catch {
-      setGreetMsg(`[Browser Preview] Hello, ${name}! (Rust backend active in desktop build)`);
+  // Active reservation session state
+  const [currentReservationId, setCurrentReservationId] = useState<string | null>(null);
+  const [currentBookingRef, setCurrentBookingRef] = useState<string | null>(null);
+
+  // Check backend microservices health on mount and periodically
+  useEffect(() => {
+    const checkHealth = async () => {
+      const status = await checkBackendHealth();
+      setBackendOnline(status.bookingService);
+    };
+
+    checkHealth();
+    const interval = setInterval(checkHealth, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Countdown timer logic
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setLockTimerSeconds((prev) => {
+        if (prev <= 1) {
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  // Show temporary toast notification
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 3500);
+  };
+
+  // Toggle seat selection
+  const handleToggleSeat = (clickedSeat: Seat, categoryName: string, subtitle: string) => {
+    const isCurrentlySelected = clickedSeat.status === 'selected';
+    const newStatus = isCurrentlySelected ? 'available' : 'selected';
+
+    // Update seat state in categories tree
+    setCategories((prevCategories) =>
+      prevCategories.map((cat) => ({
+        ...cat,
+        rows: cat.rows.map((row) => ({
+          ...row,
+          leftSeats: row.leftSeats.map((s) => (s.id === clickedSeat.id ? { ...s, status: newStatus } : s)),
+          rightSeats: row.rightSeats.map((s) => (s.id === clickedSeat.id ? { ...s, status: newStatus } : s)),
+        })),
+      }))
+    );
+
+    // Update selected seats list
+    if (isCurrentlySelected) {
+      setSelectedSeats((prev) => prev.filter((s) => s.id !== clickedSeat.id));
+    } else {
+      const newSelected: SelectedSeat = {
+        id: clickedSeat.id,
+        categoryName,
+        subtitle,
+        seatLabel: `Baris ${clickedSeat.row} · No ${clickedSeat.number < 10 ? '0' + clickedSeat.number : clickedSeat.number}`,
+        price: clickedSeat.price,
+      };
+      setSelectedSeats((prev) => [...prev, newSelected]);
+
+      // If timer is 0, reset lock timer to 5 mins (300s)
+      if (lockTimerSeconds === 0) {
+        setLockTimerSeconds(300);
+      }
     }
-  }
+  };
+
+  // Remove seat directly from summary sidebar
+  const handleRemoveSeat = (seatId: string) => {
+    setCategories((prevCategories) =>
+      prevCategories.map((cat) => ({
+        ...cat,
+        rows: cat.rows.map((row) => ({
+          ...row,
+          leftSeats: row.leftSeats.map((s) => (s.id === seatId ? { ...s, status: 'available' } : s)),
+          rightSeats: row.rightSeats.map((s) => (s.id === seatId ? { ...s, status: 'available' } : s)),
+        })),
+      }))
+    );
+    setSelectedSeats((prev) => prev.filter((s) => s.id !== seatId));
+  };
+
+  // Handle proceed to QRIS payment (triggers backend reservation lock)
+  const handleProceedToPayment = async () => {
+    if (selectedSeats.length === 0) return;
+
+    setIsBookingLoading(true);
+    try {
+      const res = await createReservation(selectedSeats);
+      setCurrentReservationId(res.reservationId);
+      setCurrentBookingRef(res.bookingRef);
+
+      // Sync remaining seconds if expiresAt is provided
+      if (res.expiresAt) {
+        const remainingSecs = Math.max(0, Math.floor((new Date(res.expiresAt).getTime() - Date.now()) / 1000));
+        if (remainingSecs > 0) {
+          setLockTimerSeconds(remainingSecs);
+        }
+      }
+
+      if (res.isMock) {
+        showToast('Reservasi siap! (Mode demonstrasi aktif)');
+      } else {
+        showToast(`Kursi berhasil di-lock di database! Ref: ${res.bookingRef}`);
+      }
+
+      setIsPaymentOpen(true);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Gagal membuat reservasi di server.';
+      showToast(message);
+    } finally {
+      setIsBookingLoading(false);
+    }
+  };
+
+  const handlePaymentSuccess = () => {
+    // Mark booked seats as sold in local view
+    setCategories((prevCategories) =>
+      prevCategories.map((cat) => ({
+        ...cat,
+        rows: cat.rows.map((row) => ({
+          ...row,
+          leftSeats: row.leftSeats.map((s) =>
+            selectedSeats.some((sel) => sel.id === s.id) ? { ...s, status: 'sold' } : s
+          ),
+          rightSeats: row.rightSeats.map((s) =>
+            selectedSeats.some((sel) => sel.id === s.id) ? { ...s, status: 'sold' } : s
+          ),
+        })),
+      }))
+    );
+    setSelectedSeats([]);
+    setCurrentReservationId(null);
+    setCurrentBookingRef(null);
+    showToast('Pembayaran berhasil! Tiket Anda telah tersimpan dan terbit.');
+  };
+
+  const handleClosePaymentModal = () => {
+    setIsPaymentOpen(false);
+    if (currentReservationId && backendOnline) {
+      cancelReservation(currentReservationId);
+    }
+  };
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <>
+      {/* Top Navbar with backend health status */}
+      <Navbar backendOnline={backendOnline} />
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
+      {/* Main Booking Area */}
+      <main className="booking-main-container">
+        {/* Left Column: Seat Map */}
+        <SeatMap
+          categories={categories}
+          onToggleSeat={handleToggleSeat}
+          onSeatAlert={showToast}
         />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+
+        {/* Right Column: Order Summary */}
+        <OrderSummary
+          selectedSeats={selectedSeats}
+          onRemoveSeat={handleRemoveSeat}
+          onProceedToPayment={handleProceedToPayment}
+          lockTimerSeconds={lockTimerSeconds}
+          isLoading={isBookingLoading}
+        />
+      </main>
+
+      {/* Floating Toast Notification */}
+      {toastMessage && <div className="toast-notice">{toastMessage}</div>}
+
+      {/* QRIS Payment Modal */}
+      <PaymentModal
+        isOpen={isPaymentOpen}
+        onClose={handleClosePaymentModal}
+        selectedSeats={selectedSeats}
+        reservationId={currentReservationId}
+        bookingRef={currentBookingRef}
+        onPaymentSuccess={handlePaymentSuccess}
+      />
+    </>
   );
 }
 
