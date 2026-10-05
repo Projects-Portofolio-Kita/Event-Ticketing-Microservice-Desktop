@@ -1,54 +1,148 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { useState, useEffect } from 'react';
+import { Navbar } from './components/Navbar';
+import { SeatMap } from './components/SeatMap';
+import { OrderSummary } from './components/OrderSummary';
+import { PaymentModal } from './components/PaymentModal';
+import { initialCategories } from './data/mockSeats';
+import { SeatCategory, Seat, SelectedSeat } from './types/booking';
+import './App.css';
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+export function App() {
+  const [categories, setCategories] = useState<SeatCategory[]>(initialCategories);
+  const [selectedSeats, setSelectedSeats] = useState<SelectedSeat[]>([]);
+  // Initial 243 seconds = 04:03 matching reference image
+  const [lockTimerSeconds, setLockTimerSeconds] = useState<number>(243);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isPaymentOpen, setIsPaymentOpen] = useState<boolean>(false);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    try {
-      setGreetMsg(await invoke("greet", { name }));
-    } catch {
-      setGreetMsg(`[Browser Preview] Hello, ${name}! (Rust backend active in desktop build)`);
+  // Countdown timer logic
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setLockTimerSeconds((prev) => {
+        if (prev <= 1) {
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  // Show temporary toast notification
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 3000);
+  };
+
+  // Toggle seat selection
+  const handleToggleSeat = (clickedSeat: Seat, categoryName: string, subtitle: string) => {
+    const isCurrentlySelected = clickedSeat.status === 'selected';
+    const newStatus = isCurrentlySelected ? 'available' : 'selected';
+
+    // Update seat state in categories tree
+    setCategories((prevCategories) =>
+      prevCategories.map((cat) => ({
+        ...cat,
+        rows: cat.rows.map((row) => ({
+          ...row,
+          leftSeats: row.leftSeats.map((s) => (s.id === clickedSeat.id ? { ...s, status: newStatus } : s)),
+          rightSeats: row.rightSeats.map((s) => (s.id === clickedSeat.id ? { ...s, status: newStatus } : s)),
+        })),
+      }))
+    );
+
+    // Update selected seats list
+    if (isCurrentlySelected) {
+      setSelectedSeats((prev) => prev.filter((s) => s.id !== clickedSeat.id));
+    } else {
+      const newSelected: SelectedSeat = {
+        id: clickedSeat.id,
+        categoryName,
+        subtitle,
+        seatLabel: `Baris ${clickedSeat.row} · No ${clickedSeat.number < 10 ? '0' + clickedSeat.number : clickedSeat.number}`,
+        price: clickedSeat.price,
+      };
+      setSelectedSeats((prev) => [...prev, newSelected]);
+
+      // If timer is 0, reset lock timer to 5 mins (300s)
+      if (lockTimerSeconds === 0) {
+        setLockTimerSeconds(300);
+      }
     }
-  }
+  };
+
+  // Remove seat directly from summary sidebar
+  const handleRemoveSeat = (seatId: string) => {
+    setCategories((prevCategories) =>
+      prevCategories.map((cat) => ({
+        ...cat,
+        rows: cat.rows.map((row) => ({
+          ...row,
+          leftSeats: row.leftSeats.map((s) => (s.id === seatId ? { ...s, status: 'available' } : s)),
+          rightSeats: row.rightSeats.map((s) => (s.id === seatId ? { ...s, status: 'available' } : s)),
+        })),
+      }))
+    );
+    setSelectedSeats((prev) => prev.filter((s) => s.id !== seatId));
+  };
+
+  const handlePaymentSuccess = () => {
+    // Mark booked seats as sold
+    setCategories((prevCategories) =>
+      prevCategories.map((cat) => ({
+        ...cat,
+        rows: cat.rows.map((row) => ({
+          ...row,
+          leftSeats: row.leftSeats.map((s) =>
+            selectedSeats.some((sel) => sel.id === s.id) ? { ...s, status: 'sold' } : s
+          ),
+          rightSeats: row.rightSeats.map((s) =>
+            selectedSeats.some((sel) => sel.id === s.id) ? { ...s, status: 'sold' } : s
+          ),
+        })),
+      }))
+    );
+    setSelectedSeats([]);
+    showToast('Pembayaran berhasil! Tiket Anda telah diterbitkan.');
+  };
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <>
+      {/* Top Navbar */}
+      <Navbar />
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
+      {/* Main Booking Area */}
+      <main className="booking-main-container">
+        {/* Left Column: Seat Map */}
+        <SeatMap
+          categories={categories}
+          onToggleSeat={handleToggleSeat}
+          onSeatAlert={showToast}
         />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+
+        {/* Right Column: Order Summary */}
+        <OrderSummary
+          selectedSeats={selectedSeats}
+          onRemoveSeat={handleRemoveSeat}
+          onProceedToPayment={() => setIsPaymentOpen(true)}
+          lockTimerSeconds={lockTimerSeconds}
+        />
+      </main>
+
+      {/* Floating Toast Notification */}
+      {toastMessage && <div className="toast-notice">{toastMessage}</div>}
+
+      {/* QRIS Payment Modal */}
+      <PaymentModal
+        isOpen={isPaymentOpen}
+        onClose={() => setIsPaymentOpen(false)}
+        selectedSeats={selectedSeats}
+        onPaymentSuccess={handlePaymentSuccess}
+      />
+    </>
   );
 }
 
