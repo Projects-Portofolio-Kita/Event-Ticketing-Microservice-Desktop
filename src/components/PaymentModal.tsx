@@ -2,6 +2,7 @@ import { useState, useEffect, type FC } from 'react';
 import { X, CheckCircle, QrCode, ShieldCheck, Download, Loader2 } from 'lucide-react';
 import { SelectedSeat } from '../types/booking';
 import { createPayment, confirmReservation, PaymentResponse } from '../services/api';
+import { formatRupiah } from '../utils/format';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -26,7 +27,7 @@ export const PaymentModal: FC<PaymentModalProps> = ({
 
   const subtotal = selectedSeats.reduce((sum, s) => sum + s.price, 0);
   const total = subtotal + Math.round(subtotal * 0.1);
-  const formatRupiah = (num: number) => 'Rp ' + num.toLocaleString('id-ID');
+
 
   // Request payment from backend when modal opens
   useEffect(() => {

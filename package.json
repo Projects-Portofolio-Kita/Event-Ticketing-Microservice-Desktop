@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test": "node --test tests/m1_foundation.test.cjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },
@@ -14,7 +15,8 @@
     "@tauri-apps/plugin-opener": "^2",
     "lucide-react": "^1.52.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
