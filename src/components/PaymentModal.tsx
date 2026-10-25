@@ -1,7 +1,7 @@
 import { useState, useEffect, type FC } from 'react';
 import { X, CheckCircle, QrCode, ShieldCheck, Download, Loader2 } from 'lucide-react';
 import { SelectedSeat } from '../types/booking';
-import { createPayment, confirmReservation, PaymentResponse } from '../services/api';
+import { createPayment, confirmReservation, confirmPayment, PaymentResponse } from '../services/api';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -51,7 +51,9 @@ export const PaymentModal: FC<PaymentModalProps> = ({
   const handleSimulatePay = async () => {
     setIsLoading(true);
     try {
-      if (reservationId) {
+      if (paymentData) {
+        await confirmPayment(paymentData.id);
+      } else if (reservationId) {
         await confirmReservation(reservationId);
       }
       setIsSuccess(true);
@@ -60,8 +62,6 @@ export const PaymentModal: FC<PaymentModalProps> = ({
       }, 2500);
     } catch (err) {
       console.error('Payment confirmation error:', err);
-      setIsSuccess(true);
-      onPaymentSuccess();
     } finally {
       setIsLoading(false);
     }

@@ -5,11 +5,37 @@ import { OrderSummary } from './components/OrderSummary';
 import { PaymentModal } from './components/PaymentModal';
 import { initialCategories } from './data/mockSeats';
 import { SeatCategory, Seat, SelectedSeat } from './types/booking';
-import { checkBackendHealth, createReservation, cancelReservation } from './services/api';
+import {
+  checkBackendHealth,
+  createReservation,
+  cancelReservation,
+  fetchEvents,
+  fetchSeatMap,
+  seatIdToUUID,
+} from './services/api';
+import { Session, getSession, logout } from './services/auth';
+import { LoginScreen } from './components/LoginScreen';
 import './App.css';
 
+// Enrich fallback seats with a deterministic UUID so booking still works offline
+function withSeatIds(categories: SeatCategory[]): SeatCategory[] {
+  return categories.map((cat) => ({
+    ...cat,
+    rows: cat.rows.map((row) => ({
+      ...row,
+      leftSeats: row.leftSeats.map((s) => ({ ...s, seatId: seatIdToUUID(s.id) })),
+      rightSeats: row.rightSeats.map((s) => ({ ...s, seatId: seatIdToUUID(s.id) })),
+    })),
+  }));
+}
+
 export function App() {
-  const [categories, setCategories] = useState<SeatCategory[]>(initialCategories);
+  const [categories, setCategories] = useState<SeatCategory[]>(() => withSeatIds(initialCategories));
+  const [event, setEvent] = useState<{ id: string; name: string; venue: string }>({
+    id: 'e9b533e4-6725-4c07-ba91-039c4a8a0b01',
+    name: 'Coldplay 2026',
+    venue: 'Stadion Utama Gelora Bung Karno',
+  });
   const [selectedSeats, setSelectedSeats] = useState<SelectedSeat[]>([]);
   // Initial 243 seconds = 04:03 matching reference image
   const [lockTimerSeconds, setLockTimerSeconds] = useState<number>(243);
@@ -17,6 +43,8 @@ export function App() {
   const [isPaymentOpen, setIsPaymentOpen] = useState<boolean>(false);
   const [backendOnline, setBackendOnline] = useState<boolean>(false);
   const [isBookingLoading, setIsBookingLoading] = useState<boolean>(false);
+  // Signed-out users only ever reach the login gate below.
+  const [session, setSession] = useState<Session | null>(() => getSession());
 
   // Active reservation session state
   const [currentReservationId, setCurrentReservationId] = useState<string | null>(null);
@@ -32,6 +60,32 @@ export function App() {
     checkHealth();
     const interval = setInterval(checkHealth, 10000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Load event + seat map from catalog-service on mount (fallback: static data)
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCatalog = async () => {
+      try {
+        const events = await fetchEvents();
+        if (cancelled || events.length === 0) return;
+
+        const firstEvent = events[0];
+        const seatMap = await fetchSeatMap(firstEvent.id);
+        if (cancelled || seatMap.length === 0) return;
+
+        setCategories(seatMap);
+        setEvent({ id: firstEvent.id, name: firstEvent.name, venue: firstEvent.venue });
+      } catch {
+        // catalog-service offline: keep static fallback data
+      }
+    };
+
+    loadCatalog();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Countdown timer logic
@@ -79,9 +133,12 @@ export function App() {
     } else {
       const newSelected: SelectedSeat = {
         id: clickedSeat.id,
+        seatId: clickedSeat.seatId ?? seatIdToUUID(clickedSeat.id),
         categoryName,
         subtitle,
         seatLabel: `Baris ${clickedSeat.row} · No ${clickedSeat.number < 10 ? '0' + clickedSeat.number : clickedSeat.number}`,
+        row: clickedSeat.row,
+        number: clickedSeat.number,
         price: clickedSeat.price,
       };
       setSelectedSeats((prev) => [...prev, newSelected]);
@@ -114,7 +171,7 @@ export function App() {
 
     setIsBookingLoading(true);
     try {
-      const res = await createReservation(selectedSeats);
+      const res = await createReservation(selectedSeats, event.id);
       setCurrentReservationId(res.reservationId);
       setCurrentBookingRef(res.bookingRef);
 
@@ -170,10 +227,23 @@ export function App() {
     }
   };
 
+  // Without a session there is nothing to book with: booking- and
+  // payment-service only accept calls carrying a verified access token.
+  if (!session) {
+    return <LoginScreen onLoggedIn={setSession} />;
+  }
+
   return (
     <>
       {/* Top Navbar with backend health status */}
-      <Navbar backendOnline={backendOnline} />
+      <Navbar
+        backendOnline={backendOnline}
+        user={{ name: session.user.name, email: session.user.email }}
+        onLogout={() => {
+          logout();
+          setSession(null);
+        }}
+      />
 
       {/* Main Booking Area */}
       <main className="booking-main-container">
@@ -182,6 +252,8 @@ export function App() {
           categories={categories}
           onToggleSeat={handleToggleSeat}
           onSeatAlert={showToast}
+          eventName={event.name}
+          venue={event.venue}
         />
 
         {/* Right Column: Order Summary */}

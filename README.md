@@ -84,6 +84,31 @@ npm run dev
 ```
 The Vite dev server will start at `http://localhost:1420`.
 
+### 3. Sign In (required)
+
+The app opens on a **login / register screen** before anything can be booked:
+
+- Credentials go to `auth-service` (`POST /api/v1/auth/login` and `/register`)
+  through the `/api/auth` proxy in `vite.config.ts` (target `http://localhost:8081`).
+- The returned access token is stored in `localStorage` under `tickid.session`
+  and sent as `Authorization: Bearer …` on **every** booking and payment call —
+  `booking-service` and `payment-service` verify it server-side, and the
+  reservation is owned by the token's subject (the `userId` in the body is
+  ignored by the server).
+- Sign out with the logout icon in the navbar; the seat map stays public, only
+  ordering requires a session.
+
+Backend required: run the stack first (`docker compose up -d` from
+`backend/`), otherwise the sign-in form reports that `auth-service` is
+unreachable.
+
+Environment (`.env`):
+
+```bash
+VITE_AUTH_API_URL=/api/auth        # dev proxy → localhost:8081
+# VITE_AUTH_API_URL=http://localhost:8081/api/v1/auth   # without dev proxy
+```
+
 ---
 
 ## 📦 Building for Production

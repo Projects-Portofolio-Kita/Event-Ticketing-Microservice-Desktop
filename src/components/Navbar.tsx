@@ -1,11 +1,13 @@
 import type { FC } from 'react';
-import { MapPin, ChevronDown, Search, LayoutGrid, Bell, Ticket, Home, Server } from 'lucide-react';
+import { MapPin, ChevronDown, Search, LayoutGrid, Bell, Ticket, Home, Server, LogOut } from 'lucide-react';
 
 interface NavbarProps {
   backendOnline?: boolean;
+  user?: { name?: string; email?: string };
+  onLogout?: () => void;
 }
 
-export const Navbar: FC<NavbarProps> = ({ backendOnline = false }) => {
+export const Navbar: FC<NavbarProps> = ({ backendOnline = false, user, onLogout }) => {
   return (
     <header className="tickid-navbar">
       <div className="navbar-left">
@@ -67,8 +69,8 @@ export const Navbar: FC<NavbarProps> = ({ backendOnline = false }) => {
           <span className="notification-badge">3</span>
         </button>
 
-        {/* User Profile */}
-        <div className="user-profile">
+        {/* Signed-in user: identity plus a way out */}
+        <div className="user-profile" title={user?.email}>
           <div className="avatar-wrapper">
             <img
               src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80"
@@ -77,8 +79,13 @@ export const Navbar: FC<NavbarProps> = ({ backendOnline = false }) => {
             />
             <span className="online-indicator" />
           </div>
+          <span className="user-name">{user?.name || user?.email || 'Akun'}</span>
           <ChevronDown size={14} className="user-chevron" />
         </div>
+
+        <button className="logout-btn" title="Keluar dari akun" onClick={onLogout}>
+          <LogOut size={16} />
+        </button>
       </div>
     </header>
   );
