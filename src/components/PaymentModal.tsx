@@ -1,21 +1,36 @@
-import { useState, useEffect, type FC } from 'react';
-import { X, CheckCircle, QrCode, ShieldCheck, Download, Loader2 } from 'lucide-react';
-import { SelectedSeat } from '../types/booking';
+import { useEffect, useState, type FC } from 'react';
+import { X, CheckCircle, QrCode, ShieldCheck, Download, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { OrderItem } from '../types/booking';
 import { createPayment, confirmReservation, confirmPayment, PaymentResponse } from '../services/api';
 
 interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  selectedSeats: SelectedSeat[];
+  /** Seats and/or tier lines currently in the basket. */
+  items: OrderItem[];
+  eventName?: string;
   reservationId: string | null;
   bookingRef: string | null;
   onPaymentSuccess: () => void;
 }
 
+const formatRupiah = (num: number) => 'Rp ' + Math.round(num).toLocaleString('id-ID');
+
+const lineTotal = (item: OrderItem): number =>
+  item.kind === 'seat' ? item.price : item.price * item.quantity;
+
+const itemCount = (item: OrderItem): number => (item.kind === 'seat' ? 1 : item.quantity);
+
+const lineLabel = (item: OrderItem): string =>
+  item.kind === 'seat'
+    ? `${item.categoryName} - ${item.seatLabel}`
+    : `${item.categoryName} × ${item.quantity}`;
+
 export const PaymentModal: FC<PaymentModalProps> = ({
   isOpen,
   onClose,
-  selectedSeats,
+  items,
+  eventName,
   reservationId,
   bookingRef,
   onPaymentSuccess,
@@ -23,33 +38,49 @@ export const PaymentModal: FC<PaymentModalProps> = ({
   const [isSuccess, setIsSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [paymentData, setPaymentData] = useState<PaymentResponse | null>(null);
+  // Failure of the QRIS session: shown inline, with a retry, instead of being
+  // swallowed by console.error (the user previously saw nothing at all).
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  // Snapshot the basket while it is still open: the parent clears its
+  // selection on success, but the receipt must keep showing what was bought.
+  const [orderSnapshot, setOrderSnapshot] = useState<OrderItem[]>([]);
 
-  const subtotal = selectedSeats.reduce((sum, s) => sum + s.price, 0);
-  const total = subtotal + Math.round(subtotal * 0.1);
-  const formatRupiah = (num: number) => 'Rp ' + num.toLocaleString('id-ID');
+  const total = orderSnapshot.reduce((sum, item) => sum + lineTotal(item), 0);
+  const totalTickets = orderSnapshot.reduce((sum, item) => sum + itemCount(item), 0);
 
   // Request payment from backend when modal opens
+  const requestPayment = () => {
+    if (!reservationId) return;
+    setIsLoading(true);
+    setPaymentError(null);
+    createPayment(reservationId)
+      .then((res) => {
+        setPaymentData(res);
+      })
+      .catch((err: unknown) => {
+        setPaymentError(err instanceof Error ? err.message : 'Gagal membuat sesi pembayaran.');
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  };
+
   useEffect(() => {
-    if (isOpen && reservationId) {
+    if (isOpen) {
+      setOrderSnapshot(items);
       setIsSuccess(false);
-      setIsLoading(true);
-      createPayment(reservationId)
-        .then((res) => {
-          setPaymentData(res);
-        })
-        .catch((err) => {
-          console.error('Failed to create payment:', err);
-        })
-        .finally(() => {
-          setIsLoading(false);
-        });
+      setPaymentData(null);
+      setPaymentError(null);
+      requestPayment();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, reservationId]);
 
   if (!isOpen) return null;
 
   const handleSimulatePay = async () => {
     setIsLoading(true);
+    setPaymentError(null);
     try {
       if (paymentData) {
         await confirmPayment(paymentData.id);
@@ -60,8 +91,8 @@ export const PaymentModal: FC<PaymentModalProps> = ({
       setTimeout(() => {
         onPaymentSuccess();
       }, 2500);
-    } catch (err) {
-      console.error('Payment confirmation error:', err);
+    } catch (err: unknown) {
+      setPaymentError(err instanceof Error ? err.message : 'Pembayaran gagal diproses.');
     } finally {
       setIsLoading(false);
     }
@@ -82,11 +113,30 @@ export const PaymentModal: FC<PaymentModalProps> = ({
                 <span className="qris-text">QRIS</span>
                 <span className="qris-sub">GPN</span>
               </div>
-              <h3 className="payment-title">Pembayaran Tiket Konser</h3>
+              <h3 className="payment-title">Pembayaran Tiket</h3>
               <p className="payment-desc">
                 Scan kode QR di bawah ini menggunakan aplikasi e-Wallet atau Mobile Banking Anda
               </p>
             </div>
+
+            {paymentError && (
+              <div className="payment-error-banner" role="alert">
+                <AlertTriangle size={16} className="payment-error-icon" />
+                <div className="payment-error-text">
+                  <strong>Pembayaran gagal</strong>
+                  <span>{paymentError}</span>
+                </div>
+                <button
+                  className="payment-error-retry"
+                  onClick={requestPayment}
+                  disabled={isLoading}
+                  title="Coba lagi"
+                >
+                  <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+                  Coba lagi
+                </button>
+              </div>
+            )}
 
             {/* QR Mockup Card */}
             <div className="qr-wrapper">
@@ -94,6 +144,11 @@ export const PaymentModal: FC<PaymentModalProps> = ({
                 {isLoading ? (
                   <div className="qr-loading">
                     <Loader2 size={40} className="animate-spin text-purple-600" />
+                  </div>
+                ) : paymentError && !paymentData ? (
+                  // No QRIS session could be created: never show a fake QR.
+                  <div className="qr-loading qr-unavailable">
+                    <QrCode size={190} className="qr-image qr-image-muted" />
                   </div>
                 ) : (
                   <>
@@ -108,19 +163,17 @@ export const PaymentModal: FC<PaymentModalProps> = ({
                 <span className="amount-label">Total Pembayaran:</span>
                 <span className="amount-value">{formatRupiah(total)}</span>
               </div>
-              {paymentData && (
-                <div className="payment-meta-badge">
-                  {paymentData.isMock ? 'Demo Mode' : 'Backend Verified'} · Ref: {bookingRef || 'TICK-CP26'}
-                </div>
+              {paymentData && bookingRef && (
+                <div className="payment-meta-badge">Backend Verified · Ref: {bookingRef}</div>
               )}
             </div>
 
             <div className="payment-seats-info">
-              <span className="info-title">Kursi yang dipesan ({selectedSeats.length}):</span>
+              <span className="info-title">Tiket yang dipesan ({totalTickets}):</span>
               <div className="info-chips">
-                {selectedSeats.map((s) => (
-                  <span key={s.id} className="info-chip">
-                    {s.categoryName} - {s.seatLabel}
+                {orderSnapshot.map((item) => (
+                  <span key={item.id} className="info-chip">
+                    {lineLabel(item)}
                   </span>
                 ))}
               </div>
@@ -133,13 +186,18 @@ export const PaymentModal: FC<PaymentModalProps> = ({
 
             <button
               className="simulate-pay-btn"
-              onClick={handleSimulatePay}
+              onClick={paymentError && !paymentData ? requestPayment : handleSimulatePay}
               disabled={isLoading}
             >
               {isLoading ? (
                 <>
                   <Loader2 size={18} className="animate-spin" />
                   <span>Memproses Pembayaran...</span>
+                </>
+              ) : paymentError && !paymentData ? (
+                <>
+                  <RefreshCw size={18} />
+                  <span>Coba Lagi</span>
                 </>
               ) : (
                 <span>Simulasikan Pembayaran Berhasil</span>
@@ -159,15 +217,15 @@ export const PaymentModal: FC<PaymentModalProps> = ({
             <div className="ticket-receipt-card">
               <div className="receipt-row">
                 <span className="receipt-label">Booking ID</span>
-                <span className="receipt-val code">{bookingRef || `TICK-CP26-${Date.now().toString().slice(-6)}`}</span>
+                <span className="receipt-val code">{bookingRef || `TICK-${Date.now().toString().slice(-6)}`}</span>
               </div>
               <div className="receipt-row">
                 <span className="receipt-label">Event</span>
-                <span className="receipt-val">Coldplay 2026 - Music of the Spheres</span>
+                <span className="receipt-val">{eventName ?? 'Event TickId'}</span>
               </div>
               <div className="receipt-row">
                 <span className="receipt-label">Jumlah Tiket</span>
-                <span className="receipt-val">{selectedSeats.length} Tiket</span>
+                <span className="receipt-val">{totalTickets} Tiket</span>
               </div>
               <div className="receipt-row">
                 <span className="receipt-label">Total Dibayar</span>
@@ -189,3 +247,5 @@ export const PaymentModal: FC<PaymentModalProps> = ({
     </div>
   );
 };
+
+export default PaymentModal;
