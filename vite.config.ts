@@ -28,5 +28,42 @@ export default defineConfig(() => ({
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
     },
+    proxy: {
+      "/api/auth": {
+        target: "http://localhost:8081",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/auth/, "/api/v1/auth"),
+      },
+      "/api/booking": {
+        target: "http://localhost:8083",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/booking/, "/api/v1"),
+      },
+      "/api/payment": {
+        target: "http://localhost:8084",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/payment/, "/api/v1"),
+      },
+      "/api/catalog": {
+        target: "http://localhost:8082",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/catalog/, "/api/v1"),
+      },
+      "/health/booking": {
+        target: "http://localhost:8083",
+        changeOrigin: true,
+        rewrite: () => "/health",
+      },
+      "/health/payment": {
+        target: "http://localhost:8084",
+        changeOrigin: true,
+        rewrite: () => "/health",
+      },
+      "/health/catalog": {
+        target: "http://localhost:8082",
+        changeOrigin: true,
+        rewrite: () => "/health",
+      },
+    },
   },
 }));
