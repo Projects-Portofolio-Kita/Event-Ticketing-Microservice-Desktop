@@ -1,26 +1,47 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
-import { SeatMap } from './components/SeatMap';
-import { OrderSummary } from './components/OrderSummary';
-import { PaymentModal } from './components/PaymentModal';
-import { initialCategories } from './data/mockSeats';
-import { SeatCategory, Seat, SelectedSeat } from './types/booking';
-import { checkBackendHealth, createReservation, cancelReservation } from './services/api';
+import { LoginScreen } from './components/LoginScreen';
+import { DiscoverPage } from './pages/DiscoverPage';
+import { EventDetailPage } from './pages/EventDetailPage';
+import { CreateEventPage } from './pages/CreateEventPage';
+import { ProfilePage } from './pages/ProfilePage';
+import { checkBackendHealth, fetchCities } from './services/api';
+import { CityEntry, DiscoveryFilters } from './types/booking';
+import { Session, getSession, logout, onSessionChange } from './services/auth';
 import './App.css';
 
-export function App() {
-  const [categories, setCategories] = useState<SeatCategory[]>(initialCategories);
-  const [selectedSeats, setSelectedSeats] = useState<SelectedSeat[]>([]);
-  // Initial 243 seconds = 04:03 matching reference image
-  const [lockTimerSeconds, setLockTimerSeconds] = useState<number>(243);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [isPaymentOpen, setIsPaymentOpen] = useState<boolean>(false);
-  const [backendOnline, setBackendOnline] = useState<boolean>(false);
-  const [isBookingLoading, setIsBookingLoading] = useState<boolean>(false);
+const EMPTY_FILTERS: DiscoveryFilters = { q: '', city: '', category: '' };
 
-  // Active reservation session state
-  const [currentReservationId, setCurrentReservationId] = useState<string | null>(null);
-  const [currentBookingRef, setCurrentBookingRef] = useState<string | null>(null);
+function AppShell() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const [session, setSession] = useState<Session | null>(() => getSession());
+  const [backendOnline, setBackendOnline] = useState<boolean>(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [filters, setFilters] = useState<DiscoveryFilters>(EMPTY_FILTERS);
+  const [cities, setCities] = useState<CityEntry[]>([]);
+
+  // The auth module owns the real session (it refreshes the access token and
+  // may drop it when the refresh token dies). Follow it so the navbar and the
+  // route guards never show a signed-in user whose token no longer works.
+  const manualLogoutRef = useRef(false);
+  useEffect(() => {
+    let previous = getSession();
+    return onSessionChange((next) => {
+      const wasSignedIn = Boolean(previous);
+      previous = next;
+      setSession(next);
+
+      if (!next && wasSignedIn && !manualLogoutRef.current) {
+        setToastMessage('Sesi Anda kedaluwarsa. Silakan masuk ulang.');
+        setTimeout(() => setToastMessage(null), 3500);
+        navigate('/login');
+      }
+      manualLogoutRef.current = false;
+    });
+  }, [navigate]);
 
   // Check backend microservices health on mount and periodically
   useEffect(() => {
@@ -34,179 +55,131 @@ export function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Countdown timer logic
+  // City list for the location picker (also warms the discovery cache).
   useEffect(() => {
-    const timer = setInterval(() => {
-      setLockTimerSeconds((prev) => {
-        if (prev <= 1) {
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
+    let cancelled = false;
+    fetchCities().then((list) => {
+      if (!cancelled) setCities(list);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Show temporary toast notification
-  const showToast = (message: string) => {
+  const showToast = useCallback((message: string) => {
     setToastMessage(message);
     setTimeout(() => {
       setToastMessage(null);
     }, 3500);
-  };
+  }, []);
 
-  // Toggle seat selection
-  const handleToggleSeat = (clickedSeat: Seat, categoryName: string, subtitle: string) => {
-    const isCurrentlySelected = clickedSeat.status === 'selected';
-    const newStatus = isCurrentlySelected ? 'available' : 'selected';
+  // Changing a filter always brings the user back to the discovery grid.
+  const applyFilters = useCallback(
+    (patch: Partial<DiscoveryFilters>) => {
+      setFilters((prev) => ({ ...prev, ...patch }));
+      if (location.pathname !== '/') navigate('/');
+    },
+    [location.pathname, navigate]
+  );
 
-    // Update seat state in categories tree
-    setCategories((prevCategories) =>
-      prevCategories.map((cat) => ({
-        ...cat,
-        rows: cat.rows.map((row) => ({
-          ...row,
-          leftSeats: row.leftSeats.map((s) => (s.id === clickedSeat.id ? { ...s, status: newStatus } : s)),
-          rightSeats: row.rightSeats.map((s) => (s.id === clickedSeat.id ? { ...s, status: newStatus } : s)),
-        })),
-      }))
-    );
+  const handleLogout = useCallback(() => {
+    manualLogoutRef.current = true;
+    logout();
+    setSession(null);
+    setFilters(EMPTY_FILTERS);
+    navigate('/');
+  }, [navigate]);
 
-    // Update selected seats list
-    if (isCurrentlySelected) {
-      setSelectedSeats((prev) => prev.filter((s) => s.id !== clickedSeat.id));
-    } else {
-      const newSelected: SelectedSeat = {
-        id: clickedSeat.id,
-        categoryName,
-        subtitle,
-        seatLabel: `Baris ${clickedSeat.row} · No ${clickedSeat.number < 10 ? '0' + clickedSeat.number : clickedSeat.number}`,
-        price: clickedSeat.price,
-      };
-      setSelectedSeats((prev) => [...prev, newSelected]);
+  const handleLoggedIn = useCallback(
+    (next: Session) => {
+      setSession(next);
+      const from = (location.state as { from?: string } | null)?.from;
+      navigate(from ?? '/', { replace: true });
+    },
+    [location.state, navigate]
+  );
 
-      // If timer is 0, reset lock timer to 5 mins (300s)
-      if (lockTimerSeconds === 0) {
-        setLockTimerSeconds(300);
-      }
-    }
-  };
-
-  // Remove seat directly from summary sidebar
-  const handleRemoveSeat = (seatId: string) => {
-    setCategories((prevCategories) =>
-      prevCategories.map((cat) => ({
-        ...cat,
-        rows: cat.rows.map((row) => ({
-          ...row,
-          leftSeats: row.leftSeats.map((s) => (s.id === seatId ? { ...s, status: 'available' } : s)),
-          rightSeats: row.rightSeats.map((s) => (s.id === seatId ? { ...s, status: 'available' } : s)),
-        })),
-      }))
-    );
-    setSelectedSeats((prev) => prev.filter((s) => s.id !== seatId));
-  };
-
-  // Handle proceed to QRIS payment (triggers backend reservation lock)
-  const handleProceedToPayment = async () => {
-    if (selectedSeats.length === 0) return;
-
-    setIsBookingLoading(true);
-    try {
-      const res = await createReservation(selectedSeats);
-      setCurrentReservationId(res.reservationId);
-      setCurrentBookingRef(res.bookingRef);
-
-      // Sync remaining seconds if expiresAt is provided
-      if (res.expiresAt) {
-        const remainingSecs = Math.max(0, Math.floor((new Date(res.expiresAt).getTime() - Date.now()) / 1000));
-        if (remainingSecs > 0) {
-          setLockTimerSeconds(remainingSecs);
-        }
-      }
-
-      if (res.isMock) {
-        showToast('Reservasi siap! (Mode demonstrasi aktif)');
-      } else {
-        showToast(`Kursi berhasil di-lock di database! Ref: ${res.bookingRef}`);
-      }
-
-      setIsPaymentOpen(true);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Gagal membuat reservasi di server.';
-      showToast(message);
-    } finally {
-      setIsBookingLoading(false);
-    }
-  };
-
-  const handlePaymentSuccess = () => {
-    // Mark booked seats as sold in local view
-    setCategories((prevCategories) =>
-      prevCategories.map((cat) => ({
-        ...cat,
-        rows: cat.rows.map((row) => ({
-          ...row,
-          leftSeats: row.leftSeats.map((s) =>
-            selectedSeats.some((sel) => sel.id === s.id) ? { ...s, status: 'sold' } : s
-          ),
-          rightSeats: row.rightSeats.map((s) =>
-            selectedSeats.some((sel) => sel.id === s.id) ? { ...s, status: 'sold' } : s
-          ),
-        })),
-      }))
-    );
-    setSelectedSeats([]);
-    setCurrentReservationId(null);
-    setCurrentBookingRef(null);
-    showToast('Pembayaran berhasil! Tiket Anda telah tersimpan dan terbit.');
-  };
-
-  const handleClosePaymentModal = () => {
-    setIsPaymentOpen(false);
-    if (currentReservationId && backendOnline) {
-      cancelReservation(currentReservationId);
-    }
-  };
+  // The sign-in gate is a full-screen view of its own.
+  const isLoginRoute = location.pathname === '/login';
 
   return (
     <>
-      {/* Top Navbar with backend health status */}
-      <Navbar backendOnline={backendOnline} />
-
-      {/* Main Booking Area */}
-      <main className="booking-main-container">
-        {/* Left Column: Seat Map */}
-        <SeatMap
-          categories={categories}
-          onToggleSeat={handleToggleSeat}
-          onSeatAlert={showToast}
+      {!isLoginRoute && (
+        <Navbar
+          backendOnline={backendOnline}
+          session={session}
+          filters={filters}
+          cities={cities}
+          onFiltersChange={applyFilters}
+          onLogout={handleLogout}
         />
+      )}
 
-        {/* Right Column: Order Summary */}
-        <OrderSummary
-          selectedSeats={selectedSeats}
-          onRemoveSeat={handleRemoveSeat}
-          onProceedToPayment={handleProceedToPayment}
-          lockTimerSeconds={lockTimerSeconds}
-          isLoading={isBookingLoading}
-        />
+      <main className="app-main">
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <DiscoverPage
+                filters={filters}
+                onFiltersChange={applyFilters}
+                showToast={showToast}
+              />
+            }
+          />
+          <Route
+            path="/event/:id"
+            element={
+              <EventDetailPage
+                session={session}
+                backendOnline={backendOnline}
+                showToast={showToast}
+                onLoginRequired={() => navigate('/login', { state: { from: location.pathname } })}
+              />
+            }
+          />
+          <Route
+            path="/create"
+            element={
+              session ? (
+                <CreateEventPage showToast={showToast} />
+              ) : (
+                <Navigate to="/login" replace state={{ from: '/create' }} />
+              )
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              session ? (
+                <ProfilePage
+                  session={session}
+                  onSessionChange={setSession}
+                  showToast={showToast}
+                />
+              ) : (
+                <Navigate to="/login" replace state={{ from: '/profile' }} />
+              )
+            }
+          />
+          <Route
+            path="/login"
+            element={session ? <Navigate to="/" replace /> : <LoginScreen onLoggedIn={handleLoggedIn} />}
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </main>
 
-      {/* Floating Toast Notification */}
       {toastMessage && <div className="toast-notice">{toastMessage}</div>}
-
-      {/* QRIS Payment Modal */}
-      <PaymentModal
-        isOpen={isPaymentOpen}
-        onClose={handleClosePaymentModal}
-        selectedSeats={selectedSeats}
-        reservationId={currentReservationId}
-        bookingRef={currentBookingRef}
-        onPaymentSuccess={handlePaymentSuccess}
-      />
     </>
+  );
+}
+
+export function App() {
+  return (
+    <HashRouter>
+      <AppShell />
+    </HashRouter>
   );
 }
 

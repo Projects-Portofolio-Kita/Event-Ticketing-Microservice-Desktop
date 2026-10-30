@@ -6,9 +6,11 @@ interface SeatMapProps {
   categories: SeatCategory[];
   onToggleSeat: (seat: Seat, categoryName: string, subtitle: string) => void;
   onSeatAlert: (msg: string) => void;
+  eventName?: string;
+  venue?: string;
 }
 
-export const SeatMap: FC<SeatMapProps> = ({ categories, onToggleSeat, onSeatAlert }) => {
+export const SeatMap: FC<SeatMapProps> = ({ categories, onToggleSeat, onSeatAlert, eventName, venue }) => {
   const [zoomLevel, setZoomLevel] = useState<number>(100);
 
   const handleZoomIn = () => {
@@ -44,8 +46,8 @@ export const SeatMap: FC<SeatMapProps> = ({ categories, onToggleSeat, onSeatAler
       {/* Event Header Banner */}
       <div className="seat-map-header">
         <div className="event-info">
-          <h1 className="event-title">Coldplay 2026 — Pilih Kursi</h1>
-          <p className="event-venue">Stadion Utama Gelora Bung Karno</p>
+          <h1 className="event-title">{eventName ?? 'Coldplay 2026'} — Pilih Kursi</h1>
+          <p className="event-venue">{venue ?? 'Stadion Utama Gelora Bung Karno'}</p>
         </div>
         <div className="live-viewers-badge">
           <Flame size={15} className="live-icon" />

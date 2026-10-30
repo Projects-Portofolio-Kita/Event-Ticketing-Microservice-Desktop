@@ -1,20 +1,35 @@
 import type { FC } from 'react';
-import { ArrowRight, Trash2, Loader2 } from 'lucide-react';
-import { SelectedSeat } from '../types/booking';
+import { ArrowRight, Trash2, Loader2, Armchair, Layers } from 'lucide-react';
+import { OrderItem, SaleMode } from '../types/booking';
 
 interface OrderSummaryProps {
-  selectedSeats: SelectedSeat[];
-  onRemoveSeat: (seatId: string) => void;
+  items: OrderItem[];
+  /** Removes one line: a seat id or a tier (categoryId). */
+  onRemove: (id: string) => void;
   onProceedToPayment: () => void;
   lockTimerSeconds: number;
+  /** SEATED picks seats, TIER counts tickets — the wording follows that. */
+  mode: SaleMode;
   isLoading?: boolean;
 }
 
+const formatRupiah = (num: number) => 'Rp ' + Math.round(num).toLocaleString('id-ID');
+
+/** What this line costs: seats are 1 seat, tiers multiply by quantity. */
+const lineTotal = (item: OrderItem): number =>
+  item.kind === 'seat' ? item.price : item.price * item.quantity;
+
+const lineLabel = (item: OrderItem): string =>
+  item.kind === 'seat'
+    ? item.seatLabel
+    : `${item.quantity} × ${formatRupiah(item.price)}`;
+
 export const OrderSummary: FC<OrderSummaryProps> = ({
-  selectedSeats,
-  onRemoveSeat,
+  items,
+  onRemove,
   onProceedToPayment,
   lockTimerSeconds,
+  mode,
   isLoading = false,
 }) => {
   // Format MM:SS for countdown timer
@@ -24,15 +39,20 @@ export const OrderSummary: FC<OrderSummaryProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Calculations
-  const subtotal = selectedSeats.reduce((sum, s) => sum + s.price, 0);
-  const tax = Math.round(subtotal * 0.1); // 10% Pajak Hiburan
-  const serviceFee = 0; // Biaya Layanan Rp 0
-  const total = subtotal + tax + serviceFee;
+  // Totals mirror what booking-service computes server-side (no extra fees),
+  // so the number here is exactly what the payment will charge.
+  const subtotal = items.reduce((sum, item) => sum + lineTotal(item), 0);
+  const serviceFee = 0;
+  const total = subtotal + serviceFee;
 
-  const formatRupiah = (num: number) => {
-    return 'Rp ' + num.toLocaleString('id-ID');
-  };
+  const seatCount = items.filter((item) => item.kind === 'seat').length;
+  const ticketCount = items
+    .filter((item) => item.kind === 'tier')
+    .reduce((sum, item) => sum + (item.kind === 'tier' ? item.quantity : 0), 0);
+  const pickedLabel =
+    mode === 'TIER'
+      ? `${ticketCount} tiket dipilih`
+      : `${seatCount} kursi dipilih`;
 
   const timerPercentage = Math.max(0, Math.min(100, (lockTimerSeconds / 300) * 100));
 
@@ -41,13 +61,15 @@ export const OrderSummary: FC<OrderSummaryProps> = ({
       {/* Header */}
       <div className="summary-header">
         <h2 className="summary-title">Ringkasan Pesanan</h2>
-        <p className="summary-subtitle">{selectedSeats.length} kursi dipilih</p>
+        <p className="summary-subtitle">{pickedLabel}</p>
       </div>
 
       {/* Lock Timer Card */}
       <div className="lock-timer-card">
         <div className="timer-info-row">
-          <span className="timer-label">Sisa Waktu Lock Kursi</span>
+          <span className="timer-label">
+            {mode === 'TIER' ? 'Sisa Waktu Lock Tiket' : 'Sisa Waktu Lock Kursi'}
+          </span>
           <span className="timer-countdown">{formatTimer(lockTimerSeconds)}</span>
         </div>
         <div className="timer-progress-track">
@@ -58,30 +80,39 @@ export const OrderSummary: FC<OrderSummaryProps> = ({
         </div>
       </div>
 
-      {/* Selected Items or Empty State */}
+      {/* Selected items or empty state */}
       <div className="summary-content">
-        {selectedSeats.length === 0 ? (
+        {items.length === 0 ? (
           <div className="empty-state-container">
             <p className="empty-state-text">
-              Pilih kursi yang tersedia pada denah untuk mulai memesan.
+              {mode === 'TIER'
+                ? 'Pilih jenis tiket dan jumlahnya untuk mulai memesan.'
+                : 'Pilih kursi yang tersedia pada denah untuk mulai memesan.'}
             </p>
           </div>
         ) : (
           <div className="selected-seats-list">
-            {selectedSeats.map((seat) => (
-              <div key={seat.id} className="selected-seat-item">
+            {items.map((item) => (
+              <div key={item.id} className="selected-seat-item">
                 <div className="item-info">
                   <div className="item-header">
-                    <span className="item-category-tag">{seat.categoryName}</span>
-                    <span className="item-seat-label">{seat.seatLabel}</span>
+                    <span className="item-category-tag">
+                      {item.kind === 'seat' ? (
+                        <Armchair size={11} />
+                      ) : (
+                        <Layers size={11} />
+                      )}
+                      {item.categoryName}
+                    </span>
+                    <span className="item-seat-label">{lineLabel(item)}</span>
                   </div>
-                  <span className="item-subtitle">{seat.subtitle}</span>
-                  <span className="item-price">{formatRupiah(seat.price)}</span>
+                  <span className="item-subtitle">{item.subtitle}</span>
+                  <span className="item-price">{formatRupiah(lineTotal(item))}</span>
                 </div>
                 <button
                   className="remove-seat-btn"
-                  onClick={() => onRemoveSeat(seat.id)}
-                  title="Hapus kursi"
+                  onClick={() => onRemove(item.id)}
+                  title="Hapus dari pesanan"
                 >
                   <Trash2 size={16} />
                 </button>
@@ -99,10 +130,6 @@ export const OrderSummary: FC<OrderSummaryProps> = ({
             <span className="price-val">{formatRupiah(subtotal)}</span>
           </div>
           <div className="price-row">
-            <span className="price-label">Pajak Hiburan (10%)</span>
-            <span className="price-val">{formatRupiah(tax)}</span>
-          </div>
-          <div className="price-row">
             <span className="price-label">Biaya Layanan</span>
             <span className="price-val">{formatRupiah(serviceFee)}</span>
           </div>
@@ -116,8 +143,8 @@ export const OrderSummary: FC<OrderSummaryProps> = ({
         </div>
 
         <button
-          className={`checkout-btn ${selectedSeats.length === 0 || isLoading ? 'disabled' : 'active'}`}
-          disabled={selectedSeats.length === 0 || isLoading}
+          className={`checkout-btn ${items.length === 0 || isLoading ? 'disabled' : 'active'}`}
+          disabled={items.length === 0 || isLoading}
           onClick={onProceedToPayment}
         >
           {isLoading ? (
@@ -136,3 +163,5 @@ export const OrderSummary: FC<OrderSummaryProps> = ({
     </aside>
   );
 };
+
+export default OrderSummary;
