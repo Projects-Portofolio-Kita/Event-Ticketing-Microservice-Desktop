@@ -1,6 +1,6 @@
 /**
- * ETicketPage - Route Controller for #/tickets and #/tickets/:bookingRef?
- * Connects route parameters and BookingContext to ETicketScreen
+ * @file ETicketPage.tsx
+ * @description Route page controller for viewing and downloading active e-tickets.
  */
 import React, { useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';

@@ -1,13 +1,12 @@
 /**
- * Mock User Profile Data for TickId Desktop Application
- * Matches Figma host app Header user dropdown specification
+ * @file mockUser.ts
+ * @description Mock user profile and menu navigation items.
  */
-
 import { UserProfile } from '../types/user';
 
 export const mockUser: UserProfile = {
   id: 'usr-fajrul-01',
-  name: 'Fajrul Rahman', // Fajrul Kurniawan / Fajrul Rahman per Figma spec
+  name: 'Fajrul Rahman',
   email: 'fajrul@example.com',
   avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=72&h=72&fit=crop&auto=format',
   membershipTier: 'VIP Silver Member',
@@ -24,5 +23,4 @@ export const mockUser: UserProfile = {
   ]
 };
 
-// Aliases for user profile variations
 export const mockUserProfile = mockUser;

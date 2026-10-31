@@ -1,38 +1,19 @@
 /**
- * useLockTimer Hook - Independent Reusable Timer Hook
- * Manages countdown seconds, MM:SS formatting, and percentage progress track
+ * @file useLockTimer.ts
+ * @description Reusable seat lock countdown hook with progress calculation.
  */
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { formatTimer } from '../utils/format';
-
-export interface UseLockTimerOptions {
-  initialSeconds?: number;
-  totalDuration?: number;
-  onExpire?: () => void;
-  autoStart?: boolean;
-}
-
-export interface UseLockTimerReturn {
-  seconds: number;
-  formatted: string;
-  percentage: number;
-  isExpired: boolean;
-  reset: (newSeconds?: number) => void;
-}
+import { UseLockTimerOptions, UseLockTimerReturn } from './lock_timer_types';
+export * from './lock_timer_types';
 
 export function useLockTimer(options: UseLockTimerOptions = {}): UseLockTimerReturn {
-  const {
-    initialSeconds = 300,
-    totalDuration = 300,
-    onExpire,
-    autoStart = true
-  } = options;
-
+  const { initialSeconds = 300, totalDuration = 300, onExpire, autoStart = true } = options;
   const [seconds, setSeconds] = useState<number>(initialSeconds);
 
   useEffect(() => {
     if (!autoStart || seconds <= 0) return;
-
     const interval = setInterval(() => {
       setSeconds((prev) => {
         if (prev <= 1) {
@@ -43,7 +24,6 @@ export function useLockTimer(options: UseLockTimerOptions = {}): UseLockTimerRet
         return prev - 1;
       });
     }, 1000);
-
     return () => clearInterval(interval);
   }, [autoStart, seconds, onExpire]);
 
@@ -52,21 +32,12 @@ export function useLockTimer(options: UseLockTimerOptions = {}): UseLockTimerRet
   }, [initialSeconds]);
 
   const formatted = useMemo(() => formatTimer(seconds), [seconds]);
-
   const percentage = useMemo(() => {
     if (totalDuration <= 0) return 0;
     return Math.max(0, Math.min(100, (seconds / totalDuration) * 100));
   }, [seconds, totalDuration]);
 
-  const isExpired = seconds <= 0;
-
-  return {
-    seconds,
-    formatted,
-    percentage,
-    isExpired,
-    reset
-  };
+  return { seconds, formatted, percentage, isExpired: seconds <= 0, reset };
 }
 
 export default useLockTimer;

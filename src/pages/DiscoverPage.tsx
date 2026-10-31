@@ -1,5 +1,6 @@
 /**
- * DiscoverPage - Route Controller for #/ and #/discover
+ * @file DiscoverPage.tsx
+ * @description Route page controller for the discover homepage.
  */
 import React, { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';

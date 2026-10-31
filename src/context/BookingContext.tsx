@@ -1,159 +1,50 @@
 /**
- * BookingContext for TickId Desktop Application
- * Manages seat selection, real-time pricing calculation, lock timer, and checkout modal state
+ * @file BookingContext.tsx
+ * @description Context provider and useBooking consumer hook.
  */
-
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import type { Seat, BookingContextType } from '../types/seat';
 
-const INITIAL_LOCK_SECONDS = 300; // 5 minutes lock timer
-const SERVICE_FEE_AMOUNT = 35000;  // Rp 35.000 service fee per booking
-
 export interface ExtendedBookingContextType extends BookingContextType {
-  formattedLockTimer: string;
-  isSeatSelected: (seatId: string) => boolean;
-  resetTimer: () => void;
+  formattedLockTimer: string; isSeatSelected: (s: string) => boolean; resetTimer: () => void;
 }
-
+export interface BookingProviderProps {
+  children: React.ReactNode; initialSeats?: Seat[]; onPaymentSuccess?: () => void;
+}
+const INITIAL_LOCK_SECONDS = 300, SERVICE_FEE = 35000;
 const BookingContext = createContext<ExtendedBookingContextType | undefined>(undefined);
 
-export interface BookingProviderProps {
-  children: React.ReactNode;
-  initialSeats?: Seat[];
-  onPaymentSuccess?: () => void;
-}
+export const BookingProvider: React.FC<BookingProviderProps> = ({ children, initialSeats = [], onPaymentSuccess }) => {
+  const [selectedSeats, setSelectedSeats] = useState<Seat[]>(initialSeats); const [lockTimerSeconds, setLockTimerSeconds] = useState(INITIAL_LOCK_SECONDS); const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
-export const BookingProvider: React.FC<BookingProviderProps> = ({
-  children,
-  initialSeats = [],
-  onPaymentSuccess
-}) => {
-  const [selectedSeats, setSelectedSeats] = useState<Seat[]>(initialSeats);
-  const [lockTimerSeconds, setLockTimerSeconds] = useState<number>(INITIAL_LOCK_SECONDS);
-  const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
+  useEffect(() => { const t = setInterval(() => setLockTimerSeconds((s) => (s > 0 ? s - 1 : 0)), 1000); return () => clearInterval(t); }, []);
 
-  // 5-minute countdown timer effect
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setLockTimerSeconds(prev => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const resetTimer = useCallback(() => {
-    setLockTimerSeconds(INITIAL_LOCK_SECONDS);
-  }, []);
-
-  const isSeatSelected = useCallback((seatId: string) => {
-    return selectedSeats.some(s => s.id === seatId || s.key === seatId);
-  }, [selectedSeats]);
-
+  const resetTimer = useCallback(() => setLockTimerSeconds(INITIAL_LOCK_SECONDS), []); const isSeatSelected = useCallback((id: string) => selectedSeats.some((s) => (s.key || s.id) === id), [selectedSeats]);
   const toggleSeat = useCallback((seat: Seat) => {
-    if (seat.status === 'sold' || seat.status === 'locked') {
-      return;
-    }
-
-    setSelectedSeats(prev => {
-      const seatKey = seat.key || seat.id;
-      const exists = prev.some(s => (s.key || s.id) === seatKey);
-      if (exists) {
-        return prev.filter(s => (s.key || s.id) !== seatKey);
-      } else {
-        return [...prev, { ...seat, status: 'selected' }];
-      }
-    });
+    if (seat.status === 'sold' || seat.status === 'locked') return;
+    const k = seat.key || seat.id;
+    setSelectedSeats((prev) => prev.some((s) => (s.key || s.id) === k) ? prev.filter((s) => (s.key || s.id) !== k) : [...prev, { ...seat, status: 'selected' }]);
   }, []);
 
-  const clearSelection = useCallback(() => {
-    setSelectedSeats([]);
-  }, []);
+  const clearSelection = useCallback(() => setSelectedSeats([]), []); const openCheckout = useCallback(() => { if (selectedSeats.length > 0) setIsCheckoutOpen(true); }, [selectedSeats.length]);
+  const closeCheckout = useCallback(() => setIsCheckoutOpen(false), []); const completePayment = useCallback(() => { setIsCheckoutOpen(false); onPaymentSuccess?.(); }, [onPaymentSuccess]);
 
-  const openCheckout = useCallback(() => {
-    if (selectedSeats.length > 0) {
-      setIsCheckoutOpen(true);
-    }
-  }, [selectedSeats.length]);
-
-  const closeCheckout = useCallback(() => {
-    setIsCheckoutOpen(false);
-  }, []);
-
-  const completePayment = useCallback(() => {
-    setIsCheckoutOpen(false);
-    if (onPaymentSuccess) {
-      onPaymentSuccess();
-    }
-  }, [onPaymentSuccess]);
-
-  // Pricing calculations
-  const subtotal = useMemo(() => {
-    return selectedSeats.reduce((acc, seat) => acc + (seat.price || 0), 0);
+  const { subtotal, tax, serviceFee, total } = useMemo(() => {
+    const sub = selectedSeats.reduce((acc, s) => acc + (s.price || 0), 0);
+    const tx = selectedSeats.length > 0 ? Math.round(sub * 0.1) : 0, fee = selectedSeats.length > 0 ? SERVICE_FEE : 0;
+    return { subtotal: sub, tax: tx, serviceFee: fee, total: sub + tx + fee };
   }, [selectedSeats]);
-
-  const tax = useMemo(() => {
-    return selectedSeats.length > 0 ? Math.round(subtotal * 0.1) : 0;
-  }, [subtotal, selectedSeats.length]);
-
-  const serviceFee = useMemo(() => {
-    return selectedSeats.length > 0 ? SERVICE_FEE_AMOUNT : 0;
-  }, [selectedSeats.length]);
-
-  const total = useMemo(() => {
-    return subtotal + tax + serviceFee;
-  }, [subtotal, tax, serviceFee]);
-
-  const formattedLockTimer = useMemo(() => {
-    const mins = Math.floor(lockTimerSeconds / 60);
-    const secs = lockTimerSeconds % 60;
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  }, [lockTimerSeconds]);
+  const formattedLockTimer = useMemo(() => `${String(Math.floor(lockTimerSeconds / 60)).padStart(2, '0')}:${String(lockTimerSeconds % 60).padStart(2, '0')}`, [lockTimerSeconds]);
 
   const value = useMemo<ExtendedBookingContextType>(() => ({
-    selectedSeats,
-    toggleSeat,
-    clearSelection,
-    lockTimerSeconds,
-    subtotal,
-    tax,
-    serviceFee,
-    total,
-    isCheckoutOpen,
-    openCheckout,
-    closeCheckout,
-    completePayment,
-    formattedLockTimer,
-    isSeatSelected,
-    resetTimer
-  }), [
-    selectedSeats,
-    toggleSeat,
-    clearSelection,
-    lockTimerSeconds,
-    subtotal,
-    tax,
-    serviceFee,
-    total,
-    isCheckoutOpen,
-    openCheckout,
-    closeCheckout,
-    completePayment,
-    formattedLockTimer,
-    isSeatSelected,
-    resetTimer
-  ]);
+    selectedSeats, toggleSeat, clearSelection, lockTimerSeconds, subtotal, tax, serviceFee, total,
+    isCheckoutOpen, openCheckout, closeCheckout, completePayment, formattedLockTimer, isSeatSelected, resetTimer,
+  }), [selectedSeats, toggleSeat, clearSelection, lockTimerSeconds, subtotal, tax, serviceFee, total, isCheckoutOpen, openCheckout, closeCheckout, completePayment, formattedLockTimer, isSeatSelected, resetTimer]);
 
-  return (
-    <BookingContext.Provider value={value}>
-      {children}
-    </BookingContext.Provider>
-  );
+  return <BookingContext.Provider value={value}>{children}</BookingContext.Provider>;
 };
-
 export const useBooking = (): ExtendedBookingContextType => {
-  const context = useContext(BookingContext);
-  if (!context) {
-    throw new Error('useBooking must be used within a BookingProvider');
-  }
-  return context;
+  const ctx = useContext(BookingContext);
+  if (!ctx) throw new Error('useBooking must be used within a BookingProvider');
+  return ctx;
 };

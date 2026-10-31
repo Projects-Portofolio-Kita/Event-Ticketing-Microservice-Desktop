@@ -1,6 +1,6 @@
 /**
- * SeatMapPage - Route Controller for #/seatmap/:eventId
- * Connects :eventId and BookingContext to SeatMapScreen
+ * @file SeatMapPage.tsx
+ * @description Route page controller for seat selection interactive map.
  */
 import React, { useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';

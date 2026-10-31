@@ -1,7 +1,7 @@
 /**
- * User Profile and Menu Types for TickId Desktop Application
+ * @file user.ts
+ * @description Types for user profile, membership status, and navigation menu items.
  */
-
 export interface UserMenuItem {
   id: string;
   label: string;

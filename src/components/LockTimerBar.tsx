@@ -1,6 +1,6 @@
 /**
- * LockTimerBar Component - Independent Reusable Lock Timer Card
- * Renders countdown timer with animated progress bar for seat reservations
+ * @file LockTimerBar.tsx
+ * @description Countdown timer card with animated progress bar for seat reservations.
  */
 import React from 'react';
 import { formatTimer } from '../utils/format';
@@ -28,7 +28,6 @@ export const LockTimerBar: React.FC<LockTimerBarProps> = ({
           {formatTimer(seconds)}
         </span>
       </div>
-      {/* Animated Progress Track */}
       <div className="timer-progress-track w-full bg-amber/20 rounded-full h-1.5 overflow-hidden">
         <div
           className="timer-progress-bar bg-amber h-full transition-all duration-1000 ease-linear rounded-full"

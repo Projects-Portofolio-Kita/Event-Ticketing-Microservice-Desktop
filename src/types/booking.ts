@@ -1,7 +1,11 @@
+/**
+ * @file booking.ts
+ * @description Types for seat categories, statuses, and seat selections.
+ */
 export type SeatStatus = 'available' | 'selected' | 'locked' | 'sold';
 
 export interface Seat {
-  id: string; // e.g. "CAT3-A-01"
+  id: string;
   row: string;
   number: number;
   status: SeatStatus;

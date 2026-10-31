@@ -1,5 +1,6 @@
 /**
- * CategoriesPage - Route Controller for #/categories
+ * @file CategoriesPage.tsx
+ * @description Route page controller for browsing events by category.
  */
 import React, { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';

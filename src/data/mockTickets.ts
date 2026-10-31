@@ -1,8 +1,7 @@
 /**
- * Mock Digital E-Ticket Pass Data for TickId Desktop Application
- * Matches Figma host app E-Ticket screen specification (#TICK-ID-98214)
+ * @file mockTickets.ts
+ * @description Mock digital e-ticket pass data conforming to ETicketData structure.
  */
-
 import { ETicketData } from '../types/ticket';
 
 export const mockETicketData: ETicketData = {

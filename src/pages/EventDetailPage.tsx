@@ -1,6 +1,6 @@
 /**
- * EventDetailPage - Route Controller for #/event/:eventId
- * Reads :eventId from useParams and handles breadcrumb and booking actions
+ * @file EventDetailPage.tsx
+ * @description Route page controller for viewing concert details and ticket tiers.
  */
 import React, { useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';

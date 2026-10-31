@@ -1,7 +1,7 @@
 /**
- * Ticket and Digital Pass Types for TickId Desktop Application
+ * @file ticket.ts
+ * @description Types for digital passes, ticket metadata, and buyer KYC info.
  */
-
 export interface TicketMetaItem {
   k: string;
   v: string;

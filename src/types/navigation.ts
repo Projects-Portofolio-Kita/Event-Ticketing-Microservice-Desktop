@@ -1,8 +1,7 @@
 /**
- * Navigation Types for TickId Desktop Application
- * Matches Figma host app screen routing specification
+ * @file navigation.ts
+ * @description Types for screen routing, navigation context, and breadcrumbs.
  */
-
 export type ScreenType = 'discover' | 'categories' | 'detail' | 'seatmap' | 'tickets';
 
 export interface BreadcrumbItem {

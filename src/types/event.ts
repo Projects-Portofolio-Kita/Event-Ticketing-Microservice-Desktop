@@ -1,6 +1,9 @@
 /**
- * Event and Category Types for TickId Desktop Application
+ * @file event.ts
+ * @description Event and hero banner models with category re-exports.
  */
+
+export * from './category_meta';
 
 export interface EventItem {
   id: string;
@@ -27,47 +30,4 @@ export interface HeroSlide {
   meta: string;
   img: string;
   overlay: string;
-}
-
-export interface CategoryItem {
-  id: string;
-  name: string;
-  label: string;
-  count?: number;
-  color: string;
-  bgGradient?: string;
-  img: string;
-  image?: string;
-}
-
-export interface TicketTierItem {
-  id?: string;
-  name: string;
-  sub?: string;
-  price: number | string;
-  priceLabel?: string;
-  status: string;
-  tone: 'ok' | 'warn' | 'sold';
-  color: string;
-  rows?: number;
-  cols?: number;
-}
-
-export interface ConcertMeta {
-  title: string;
-  artist: string;
-  specialGuest?: string;
-  date: string;
-  hours: string;
-  venue: string;
-  mapsUrl: string;
-  summary: string;
-  ecoHighlights: string;
-  posterImage: string;
-  priceRange: string;
-}
-
-export interface FaqItem {
-  q: string;
-  a: string;
 }

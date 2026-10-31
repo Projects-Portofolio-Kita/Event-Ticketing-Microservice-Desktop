@@ -1,6 +1,6 @@
 /**
- * BarcodeScannerBar Component - Independent Reusable Ticket Barcode
- * Matches reverse-engineered specifications with 58 vertical bars and breathe animation
+ * @file BarcodeScannerBar.tsx
+ * @description Barcode scanner bar component with animated dynamic bars.
  */
 import React from 'react';
 import { generateBarcodeBars } from '../utils/format';
@@ -28,10 +28,7 @@ export const BarcodeScannerBar: React.FC<BarcodeScannerBarProps> = ({
         <span
           key={idx}
           className={`barcode-bar ${height} bg-ink rounded-xs mx-[0.5px] breathe`}
-          style={{
-            width: `${w}px`,
-            animationDelay: `${(idx % 12) * 0.15}s`
-          }}
+          style={{ width: `${w}px`, animationDelay: `${(idx % 12) * 0.15}s` }}
         />
       ))}
     </div>

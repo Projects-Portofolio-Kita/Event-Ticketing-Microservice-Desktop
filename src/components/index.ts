@@ -1,3 +1,7 @@
+/**
+ * @file index.ts
+ * @description Barrel export for UI components.
+ */
 export * from './Header';
 export * from './Layout';
 export * from './QrCode';

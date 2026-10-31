@@ -1,6 +1,6 @@
 /**
- * Layout Component - Persistent Master Shell for TickId Desktop
- * Wraps persistent <Header />, route <Outlet />, and global <CheckoutModal />
+ * @file Layout.tsx
+ * @description Persistent master shell wrapping Header, main outlet, and global CheckoutModal.
  */
 import React from 'react';
 import { Outlet } from 'react-router-dom';

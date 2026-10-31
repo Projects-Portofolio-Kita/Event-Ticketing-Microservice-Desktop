@@ -1,28 +1,10 @@
 /**
- * Seat and Booking Domain Types for TickId Desktop Application
+ * @file seat.ts
+ * @description Core Seat model and BookingContextType contracts for TickId.
  */
 
-export type SeatTier = 'cat1' | 'cat2' | 'cat3' | 'cat4';
-export type SeatStatus = 'available' | 'selected' | 'locked' | 'sold';
-
-export interface StadiumSection {
-  id: string;
-  name: string;
-  sub: string;
-  price: number;
-  priceLabel: string;
-  color: string;
-  rows: number;
-  cols: number;
-}
-
-export interface StadiumSeat {
-  key: string;
-  section: StadiumSection;
-  row: string;
-  num: number;
-  status: SeatStatus;
-}
+import { SeatTier, SeatStatus } from './seat_tier';
+export * from './seat_tier';
 
 export interface Seat {
   id: string;
